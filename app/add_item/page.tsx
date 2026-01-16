@@ -10,40 +10,6 @@ function normalizeText(t: string) {
   return t.replace(/\r/g, '').trim();
 }
 
-function parseReceiptTotal(text: string): number | null {
-  const lines = normalizeText(text).split('\n').map(l => l.trim()).filter(Boolean);
-
-  // TOTAL / AMOUNT DUE / BALANCE DUE 등 우선순위 키워드
-  const totalRegexes = [
-    /^(total|amount due|balance due)\b.*?(\d+\.\d{2})$/i,
-    /^(total|amount due|balance due)\b.*?(\d+)\s*$/i, // 혹시 소수점이 OCR에 안 잡히는 경우
-  ];
-
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].replace(/\s+/g, ' ');
-    for (const re of totalRegexes) {
-      const m = line.match(re);
-      if (m) {
-        const raw = m[m.length - 1];
-        const num = Number(String(raw).replace(/[^\d.]/g, ''));
-        if (Number.isFinite(num) && num > 0) return num;
-      }
-    }
-  }
-
-  // fallback: 마지막에 가장 큰 금액(대충)
-  let best: number | null = null;
-  const money = /(\d+\.\d{2})/g;
-  for (const line of lines) {
-    const ms = line.match(money);
-    if (!ms) continue;
-    for (const s of ms) {
-      const n = Number(s);
-      if (Number.isFinite(n) && n > 0) best = best === null ? n : Math.max(best, n);
-    }
-  }
-  return best;
-}
 
 function isMoneyLine(line: string) {
   // 12.89  / 2.00- 형태만 인정
@@ -76,101 +42,118 @@ function cleanDesc(desc: string) {
   return s;
 }
 
-// ✅ 핵심: 줄 단위로 읽어서 “설명 버퍼 + 가격 줄”을 매칭
-function parseCostcoLikeReceipt(text: string) {
+// ✅ Price-only parser
+// - Extracts money amounts in order: r1-1, r1-2, ...
+// - Ignores header noise and stops at summary/payment section
+// - Excludes SUBTOTAL/TAX/TOTAL lines from item prices
+function parsePricesOnly(text: string) {
   const lines = text
     .replace(/\r/g, '')
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
 
-  // 1) 파싱 구간: SELF-CHECKOUT 이후 ~ SUBTOTAL 전까지
-  const startIdx = lines.findIndex((l) => /self-?checkout/i.test(l));
-  const endIdx = lines.findIndex((l) => /^subtotal\b/i.test(l));
-  const body = lines.slice(startIdx >= 0 ? startIdx + 1 : 0, endIdx >= 0 ? endIdx : lines.length);
+  const normalizeMoney = (s: string) =>
+    s
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(/^\$/, '')
+      .replace(',', '.')
+      .replace('−', '-')
+      .replace(/[Oo]/g, '0')
+      .replace(/[Il]/g, '1')
+      .replace(/[.*]$/, '');
 
-  // 2) subtotal/tax/total 따로 추출
-  const subtotal = (() => {
-    const i = lines.findIndex((l) => /^subtotal\b/i.test(l));
-    if (i === -1) return null;
-    // 다음 줄이 금액인 경우가 많음
-    const next = lines[i + 1] ?? '';
-    if (isMoneyLine(next)) return moneyFromLine(next);
-    // 같은 줄에 숫자가 붙어있는 경우 fallback
-    const m = lines[i].match(/(\d+\.\d{2})/);
-    return m ? Number(m[1]) : null;
-  })();
+  const parseMoney = (raw: string): number | null => {
+    let t = normalizeMoney(raw);
 
-  const tax = (() => {
-    const i = lines.findIndex((l) => /^tax\b/i.test(l));
-    if (i === -1) return null;
-    const next = lines[i + 1] ?? '';
-    if (isMoneyLine(next)) return moneyFromLine(next);
-    const m = lines[i].match(/(\d+\.\d{2})/);
-    return m ? Number(m[1]) : null;
-  })();
-
-  const total = (() => {
-    // "**** TOTAL" 같은 줄을 찾고, 그 이후 등장하는 첫 money line을 total로
-    const i = lines.findIndex((l) => /\btotal\b/i.test(l));
-    if (i === -1) return null;
-    for (let k = i + 1; k < Math.min(lines.length, i + 12); k++) {
-      if (isMoneyLine(lines[k])) return moneyFromLine(lines[k]);
+    let neg = false;
+    if (t.endsWith('-')) {
+      neg = true;
+      t = t.slice(0, -1);
     }
-    // fallback: 전체에서 가장 마지막 money line
-    for (let k = lines.length - 1; k >= 0; k--) {
-      if (isMoneyLine(lines[k])) return moneyFromLine(lines[k]);
+    if (t.startsWith('(') && t.endsWith(')')) {
+      neg = true;
+      t = t.slice(1, -1);
+    }
+
+    // allow only X.XX format
+    if (!/^\d+\.\d{2}$/.test(t)) return null;
+
+    const num = Number(t);
+    if (!Number.isFinite(num)) return null;
+    return neg ? -num : num;
+  };
+
+  // money token inside a line
+  const moneyTokenRegex = /(\$?\s*\d+[.,]\d{2}\s*[-−*\.]?)/g;
+
+  const isSummaryLine = (l: string) =>
+    /^(subtotal|sub total|tax|total|change|tend|tender|balance due|amount due)\b/i.test(l);
+
+  const isPaymentNoise = (l: string) =>
+    /(approved|verified|pin|debit|credit|visa|mastercard|amex|eft|account|network|ref|appr|resp|tran\s*id|aid:|seq#|app#|chip|total purchase|items sold)/i.test(l);
+
+  // totals (optional)
+  const findNear = (kw: RegExp) => {
+    for (let i = 0; i < lines.length; i++) {
+      if (!kw.test(lines[i])) continue;
+
+      // same line
+      const ms = [...lines[i].matchAll(moneyTokenRegex)];
+      for (let j = ms.length - 1; j >= 0; j--) {
+        const n = parseMoney(ms[j][1]);
+        if (n !== null) return Math.round(n * 100) / 100;
+      }
+
+      // next line
+      const v = parseMoney(lines[i + 1] ?? '');
+      if (v !== null) return Math.round(v * 100) / 100;
+
+      return null;
     }
     return null;
-  })();
+  };
 
-  // 3) item 추출: “설명(여러 줄)”을 모았다가 money line 만나면 하나의 item
-  const items: { name: string; price: number }[] = [];
-  let buffer: string[] = [];
+  const subtotal = findNear(/^subtotal\b|^sub total\b/i);
+  const tax = findNear(/^tax\b/i);
+  const total = findNear(/^(\*+)?\s*total\b|\btotal\b/i);
 
-  const stopWords = /^(subtotal|tax|total)\b/i;
+  // Extract item prices in order, stopping when reaching summary/payment region
+  const prices: number[] = [];
+  let reachedSummary = false;
 
-  for (const l of body) {
-    // subtotal/tax/total 같은 키워드 만나면 버퍼 비우고 skip
-    if (stopWords.test(l)) {
-      buffer = [];
+  for (const raw of lines) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+
+    if (isPaymentNoise(line)) {
+      reachedSummary = true;
+    }
+    if (isSummaryLine(line)) {
+      reachedSummary = true;
+      // ✅ exclude summary line amounts from "item prices"
       continue;
     }
+    if (reachedSummary) continue;
 
-    // 금액 줄이면 아이템 확정
-    if (isMoneyLine(l)) {
-      const price = moneyFromLine(l);
-      if (price === null) continue;
+    const ms = [...line.matchAll(moneyTokenRegex)];
+    if (ms.length === 0) continue;
 
-      const desc = cleanDesc(buffer.join(' ').trim());
-      buffer = [];
+    // 일반적으로 한 줄에 가격이 1개(오른쪽)
+    // 그래도 안전하게: 그 줄의 마지막 money token을 사용
+    const last = ms[ms.length - 1][1];
+    const n = parseMoney(last);
+    if (n === null) continue;
 
-      // desc가 비었으면(예: 단독 E 다음에 가격만 있으면) 스킵
-      if (!desc) continue;
+    // 0.00 같은 건 제외(세금 0 같은 오염 방지)
+    if (Math.abs(n) < 0.0001) continue;
 
-      // "Park #377" 같은 건 body에 없을 가능성이 크지만 안전장치:
-      if (/st\.?\s*louis|park\s*#|mn\b|costco/i.test(desc)) continue;
-
-      items.push({ name: desc, price: Math.round(price * 100) / 100 });
-      continue;
-    }
-
-    // 금액 줄이 아니면 설명 버퍼에 쌓기
-    // 단독 "E"는 버퍼에 굳이 넣지 않아도 됨
-    if (/^e$/i.test(l)) continue;
-
-    buffer.push(l);
+    prices.push(Math.round(n * 100) / 100);
   }
 
-  return {
-    items,
-    subtotal: subtotal !== null && Number.isFinite(subtotal) ? Math.round(subtotal * 100) / 100 : null,
-    tax: tax !== null && Number.isFinite(tax) ? Math.round(tax * 100) / 100 : null,
-    total: total !== null && Number.isFinite(total) ? Math.round(total * 100) / 100 : null,
-  };
+  // (선택) totals가 존재하면 "items 합"과 비교해 디버그 가능
+  return { prices, subtotal, tax, total };
 }
-
-
 
 
 type WordOut = { text: string; x: number; y: number };
@@ -184,79 +167,6 @@ async function scanWithVision(file: File): Promise<{ text: string; words: WordOu
 
   if (!res.ok) throw new Error(data?.error || 'Scan failed');
   return { text: data.text as string, words: (data.words ?? []) as WordOut[] };
-}
-
-
-
-function wordsToLines(words: { text: string; x: number; y: number }[]) {
-  // y 기준으로 정렬 후, 가까운 y끼리 같은 줄로 묶음
-  const sorted = [...words].sort((a, b) => a.y - b.y || a.x - b.x);
-
-  const lines: { y: number; words: typeof sorted }[] = [];
-  const yThreshold = 8; // 영수증 글자 크기에 따라 8~14 정도
-
-  for (const w of sorted) {
-    const last = lines[lines.length - 1];
-    if (!last || Math.abs(w.y - last.y) > yThreshold) {
-      lines.push({ y: w.y, words: [w] });
-    } else {
-      last.words.push(w);
-      // 평균 y 업데이트(조금 더 안정적)
-      last.y = (last.y * (last.words.length - 1) + w.y) / last.words.length;
-    }
-  }
-
-  // 각 줄 내부는 x로 정렬해서 문자열로 만들기
-  return lines.map((ln) => ({
-    y: ln.y,
-    words: ln.words.sort((a, b) => a.x - b.x),
-    text: ln.words.sort((a, b) => a.x - b.x).map((w) => w.text).join(' '),
-  }));
-}
-
-function parseCostcoFromLines(lines: { text: string }[]) {
-  const out: { name: string; price: number }[] = [];
-
-  const startIdx = lines.findIndex((l) => /self-?checkout/i.test(l.text));
-  const endIdx = lines.findIndex((l) => /^subtotal\b/i.test(l.text));
-
-  const body = lines.slice(
-    startIdx >= 0 ? startIdx + 1 : 0,
-    endIdx >= 0 ? endIdx : lines.length
-  );
-
-  const skip = /(subtotal|total|tax|visa|mastercard|amex|chip|approved|resp|tran|aid|seq|appt)/i;
-
-  for (const l of body) {
-    let line = l.text.replace(/\s+/g, ' ').trim();
-    if (!line || skip.test(line)) continue;
-
-    // ✅ 줄이 합쳐진 경우 잘라내기
-    line = line.replace(/\b(SUBTOTAL|TOTAL|TAX)\b.*$/i, '').trim();
-    if (!line) continue;
-
-    // 가격 패턴: 12.89 또는 2.00- (할인)
-    const m = line.match(/(.+?)\s+(\d+\.\d{2})(-?)\s*$/);
-    if (!m) continue;
-
-    let name = m[1].trim();
-    let price = Number(m[2]);
-    if (!Number.isFinite(price) || price <= 0) continue;
-    if (m[3] === '-') price = -price;
-
-    // 코스트코: 앞에 E/코드 제거
-    name = name.replace(/^[A-Z]\s+/, '');
-    name = name.replace(/^\d{4,}\s+/, '');
-    name = name.replace(/[.\s]{2,}$/g, '').trim();
-
-    // ✅ 이름이 숫자만 남으면 버림
-    if (!name || name.length < 2) continue;
-    if (!/[A-Za-z]/.test(name)) continue;
-
-    out.push({ name, price: Math.round(price * 100) / 100 });
-  }
-
-  return out;
 }
 
 
@@ -274,7 +184,11 @@ function getNextReceiptId(items: any[]) {
 
 export default function AddItemPage() {
   const { items, setItems } = useStore();
-  
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+const [draftName, setDraftName] = useState('');
+const [originalName, setOriginalName] = useState('');
+
 
   const [itemName, setItemName] = useState('');
   const [itemPrice, setItemPrice] = useState('');
@@ -317,6 +231,7 @@ export default function AddItemPage() {
 
   if (file) {
     const url = URL.createObjectURL(file);
+    
     setReceiptPreviewUrl(url);
 
     setIsScanning(true);
@@ -335,38 +250,63 @@ export default function AddItemPage() {
     setReceiptPreviewUrl('');
     setOcrText('');
   }
+  
 };
 
 const extractFromOcrText = () => {
   if (!ocrText.trim()) return;
 
-  const parsed = parseCostcoLikeReceipt(ocrText);
+  const parsed = parsePricesOnly(ocrText);
 
-  console.log('ITEM COUNT:', parsed.items.length);
+  console.log('PRICE COUNT:', parsed.prices.length);
   console.log('SUBTOTAL:', parsed.subtotal, 'TAX:', parsed.tax, 'TOTAL:', parsed.total);
 
-  if (parsed.items.length === 0) {
-    alert('No items parsed. (Check OCR text format)');
+  if (parsed.prices.length === 0) {
+    alert('No prices parsed. (Check OCR text format)');
     return;
   }
 
   setItems((prev: any[]) => {
     const receiptId = getNextReceiptId(prev);
-    return [
-      ...prev,
-      ...parsed.items.map((d) => ({
-        id: uid(),
-        name: d.name,
-        price: d.price,
-        source: 'receipt',
-        receiptId,
-        assignedIds: [],
-      })),
-    ];
+
+    const newItems = parsed.prices.map((price, idx) => ({
+      id: uid(),
+      name: `${receiptId}-${idx + 1}`,   // ✅ r1-1, r1-2 ...
+      price,
+      source: 'receipt',
+      receiptId,
+      assignedIds: [],
+    }));
+
+    return [...prev, ...newItems];
   });
 };
 
+const beginInlineEdit = (it: any) => {
+  setEditingId(it.id);
+  setDraftName(String(it.name ?? ''));
+  setOriginalName(String(it.name ?? ''));
+};
 
+const commitInlineEdit = () => {
+  if (!editingId) return;
+  const next = draftName.trim();
+  if (!next) return;
+
+  setItems((prev: any[]) =>
+    prev.map((x) => (x.id === editingId ? { ...x, name: next } : x))
+  );
+
+  setEditingId(null);
+  setDraftName('');
+  setOriginalName('');
+};
+
+const cancelInlineEdit = () => {
+  setEditingId(null);
+  setDraftName('');
+  setOriginalName('');
+};
 
 
   const clearReceiptItems = () => {
@@ -418,7 +358,7 @@ const extractFromOcrText = () => {
             }}
           >
             <div style={{ fontWeight: 800, marginBottom: 8 }}>
-              Receipt (demo)
+              Receipt
             </div>
 
             {receiptPreviewUrl ? (
@@ -580,6 +520,10 @@ const extractFromOcrText = () => {
               Manual ${manualTotal.toFixed(2)} · Receipt ${receiptTotal.toFixed(2)}
             </div>
 
+            <div style={{ fontSize: 13, opacity: 0.75, marginTop: 6 }}>
+              Tip: You can click item to change its name
+            </div>
+
             <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
               {items.map((it: any) => (
                 <div
@@ -595,7 +539,50 @@ const extractFromOcrText = () => {
                 >
                   <div>
                     <b>[{it.source}{it.receiptId ? `:${it.receiptId}` : ''}]</b>{' '}
-                    {it.name} (${it.price.toFixed(2)})
+                    {/* name (click-to-edit) */}
+{editingId !== it.id ? (
+  <span
+    onClick={() => beginInlineEdit(it)}
+    title="Click to rename"
+    style={{
+      fontWeight: 800,
+      cursor: 'text',
+      borderBottom: '1px dashed rgba(0,0,0,0.35)',
+      paddingBottom: 1,
+    }}
+  >
+    {it.name}
+  </span>
+) : (
+  <input
+    autoFocus
+    value={draftName}
+    onChange={(e) => setDraftName(e.target.value)}
+    onFocus={(e) => e.currentTarget.select()} 
+    onKeyDown={(e) => {
+      if (e.key === 'Enter') commitInlineEdit();
+      if (e.key === 'Escape') cancelInlineEdit();
+    }}
+    onBlur={() => {
+      // blur 시: 바뀐 게 있으면 저장, 아니면 취소
+      if (draftName.trim() && draftName.trim() !== originalName.trim()) commitInlineEdit();
+      else cancelInlineEdit();
+    }}
+    style={{
+      width: 160,
+      padding: '6px 8px',
+      borderRadius: 10,
+      border: '1px solid rgba(0,0,0,0.18)',
+      fontWeight: 800,
+      background: '#fff',
+    }}
+  />
+)}
+
+<span style={{ opacity: 0.75, fontWeight: 700 }}>
+  {' '}(${it.price.toFixed(2)})
+</span>
+
                   </div>
 
                   <button
@@ -663,6 +650,9 @@ const extractFromOcrText = () => {
           </svg>
         </button>
       </Link>
+
+      
     </main>
   );
 }
+

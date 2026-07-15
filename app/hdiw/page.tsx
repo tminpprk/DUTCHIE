@@ -2,442 +2,363 @@
 
 import Link from 'next/link';
 import { useMemo } from 'react';
-import { useStore } from '../store';
+import { useStore, type Item } from '../store';
+import {
+  buildOptimizationSummary,
+  buildParticipantBalanceViews,
+  buildTransferViews,
+  checkSettlementConsistency,
+  formatCurrency,
+  transfersFromMatrix,
+  type Transfer,
+  type TransferView,
+} from '../../lib/settlement-explainability';
 
-type Transfer = { fromId: string; toId: string; amount: number };
-
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
+// This is the existing settlement routine. Presentation code consumes its output unchanged.
 function computeTransfersFromBalance(balance: Record<string, number>): Transfer[] {
   const creditors: { id: string; amt: number }[] = [];
   const debtors: { id: string; amt: number }[] = [];
 
   for (const [id, bal] of Object.entries(balance)) {
-    const v = round2(bal);
-    if (v > 0.009) creditors.push({ id, amt: v });
-    else if (v < -0.009) debtors.push({ id, amt: -v });
+    const value = round2(bal);
+    if (value > 0.009) creditors.push({ id, amt: value });
+    else if (value < -0.009) debtors.push({ id, amt: -value });
   }
 
   creditors.sort((a, b) => b.amt - a.amt);
   debtors.sort((a, b) => b.amt - a.amt);
 
   const transfers: Transfer[] = [];
-  let i = 0;
-  let j = 0;
+  let debtorIndex = 0;
+  let creditorIndex = 0;
 
-  while (i < debtors.length && j < creditors.length) {
-    const d = debtors[i];
-    const c = creditors[j];
-    const amt = Math.min(d.amt, c.amt);
-    const rounded = round2(amt);
-    if (rounded > 0) transfers.push({ fromId: d.id, toId: c.id, amount: rounded });
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
+    const amount = Math.min(debtor.amt, creditor.amt);
+    const rounded = round2(amount);
+    if (rounded > 0) transfers.push({ fromId: debtor.id, toId: creditor.id, amount: rounded });
 
-    d.amt = round2(d.amt - amt);
-    c.amt = round2(c.amt - amt);
-
-    if (d.amt <= 0.009) i++;
-    if (c.amt <= 0.009) j++;
+    debtor.amt = round2(debtor.amt - amount);
+    creditor.amt = round2(creditor.amt - amount);
+    if (debtor.amt <= 0.009) debtorIndex++;
+    if (creditor.amt <= 0.009) creditorIndex++;
   }
 
   return transfers;
 }
 
+type PaymentEvent = {
+  eventId: string;
+  label: string;
+  payerId?: string;
+  total: number;
+  sharesByPerson: Record<string, number>;
+};
+
+function TransferCards({ transfers, compact = false }: { transfers: TransferView[]; compact?: boolean }) {
+  if (transfers.length === 0) {
+    return (
+      <div className="settlement-empty" role="status">
+        No transfers are needed. Everyone has already paid their fair share.
+      </div>
+    );
+  }
+
+  return (
+    <ol className="transfer-card-list" aria-label="Transfer instructions">
+      {transfers.map((transfer, index) => (
+        <li className={compact ? 'transfer-card transfer-card-compact' : 'transfer-card'} key={`${transfer.fromId}-${transfer.toId}-${index}`}>
+          <span className="transfer-sequence" aria-hidden="true">{index + 1}</span>
+          <div className="transfer-route">
+            <strong>{transfer.fromName}</strong>
+            <span className="transfer-arrow" aria-label="sends money to">→</span>
+            <strong>{transfer.toName}</strong>
+          </div>
+          <strong className="transfer-amount">{formatCurrency(transfer.amount)}</strong>
+          {!compact && <span className="transfer-sentence">{transfer.sentence}</span>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function HowItWorksPage() {
   const { people, items, receiptPaidBy } = useStore();
+  const manualItems = useMemo(() => items.filter((item) => item.source === 'manual'), [items]);
+  const receiptItems = useMemo(() => items.filter((item) => item.source === 'receipt'), [items]);
+  const peopleIds = useMemo(() => people.map((person) => person.id), [people]);
+  const nameOf = (id: string) => people.find((person) => person.id === id)?.name.trim() || 'Unnamed';
 
-  const nameOf = (id: string) => {
-    const p = people.find((x: any) => x.id === id);
-    return p?.name?.trim() ? p.name.trim() : 'Unnamed';
-  };
-
-  const manualItems = useMemo(() => items.filter((x: any) => x.source === 'manual'), [items]);
-  const receiptItems = useMemo(() => items.filter((x: any) => x.source === 'receipt'), [items]);
-
-  // receiptId별 item 묶기
   const receiptGroups = useMemo(() => {
-    const map = new Map<string, any[]>();
-    for (const it of receiptItems as any[]) {
-      const rid = (it.receiptId as string) || 'r1';
-      const arr = map.get(rid) ?? [];
-      arr.push(it);
-      map.set(rid, arr);
+    const groups = new Map<string, Item[]>();
+    for (const item of receiptItems) {
+      const receiptId = item.receiptId || 'r1';
+      groups.set(receiptId, [...(groups.get(receiptId) ?? []), item]);
     }
-    return Array.from(map.entries())
+    return Array.from(groups.entries())
       .map(([receiptId, groupItems]) => ({ receiptId, items: groupItems }))
       .sort((a, b) => a.receiptId.localeCompare(b.receiptId, undefined, { numeric: true }));
   }, [receiptItems]);
 
-  /**
-   * 1) "payer 기준 차트(왼쪽)"를 만들기 위한 payment events 생성
-   * - receipt: receiptId 하나가 하나의 payment(카드결제 1번)
-   * - manual: 각 manual item이 하나의 payment(그 item을 누가 결제했는지)
-   *
-   * 각 event는:
-   * - label: "Receipt #1 (r1)" or "Pizza"
-   * - payerId: 실제 결제자
-   * - sharesByPerson: 이 event에서 각 사람이 부담한 금액(= payer에게 보내야 하는 근거)
-   */
-  const events = useMemo(() => {
-    const evs: {
-      eventId: string;
-      label: string;
-      payerId?: string;
-      total: number;
-      sharesByPerson: Record<string, number>;
-      kind: 'receipt' | 'manual';
-    }[] = [];
-
-    // Receipt events (receiptId별)
-    for (let idx = 0; idx < receiptGroups.length; idx++) {
-      const g = receiptGroups[idx];
-      const payerId = (receiptPaidBy ?? {})[g.receiptId];
-      const shares: Record<string, number> = {};
-      for (const p of people) shares[p.id] = 0;
-
-      let groupTotal = 0;
-      for (const it of g.items as any[]) {
-        const price = Number(it.price) || 0;
-        groupTotal += price;
-
-        const ids: string[] = it.assignedIds ?? [];
-        if (!ids.length) continue;
-
-        const share = price / ids.length;
-        for (const id of ids) {
-          if (shares[id] !== undefined) shares[id] += share;
-        }
+  const events = useMemo<PaymentEvent[]>(() => {
+    const paymentEvents: PaymentEvent[] = [];
+    receiptGroups.forEach((group, index) => {
+      const sharesByPerson: Record<string, number> = Object.fromEntries(people.map((person) => [person.id, 0]));
+      let total = 0;
+      for (const item of group.items) {
+        const price = Number(item.price) || 0;
+        total += price;
+        const assignedIds = item.assignedIds ?? [];
+        if (!assignedIds.length) continue;
+        const share = price / assignedIds.length;
+        for (const id of assignedIds) if (sharesByPerson[id] !== undefined) sharesByPerson[id] += share;
       }
-
-      // rounding
-      for (const id of Object.keys(shares)) shares[id] = round2(shares[id]);
-
-      evs.push({
-        eventId: `receipt:${g.receiptId}`,
-        label: `Receipt #${idx + 1} (${g.receiptId})`,
-        payerId,
-        total: round2(groupTotal),
-        sharesByPerson: shares,
-        kind: 'receipt',
+      for (const id of Object.keys(sharesByPerson)) sharesByPerson[id] = round2(sharesByPerson[id]);
+      paymentEvents.push({
+        eventId: `receipt:${group.receiptId}`,
+        label: `Receipt #${index + 1} (${group.receiptId})`,
+        payerId: receiptPaidBy[group.receiptId],
+        total: round2(total),
+        sharesByPerson,
       });
-    }
+    });
 
-    // Manual events (item별)
-    const n = people.length;
-    for (const it of manualItems as any[]) {
-      const payerId = it.paidById as string | undefined;
-      const price = Number(it.price) || 0;
-      const shares: Record<string, number> = {};
-      for (const p of people) shares[p.id] = 0;
-
-      if (n > 0) {
-        const share = price / n;
-        for (const p of people) shares[p.id] = round2(share);
+    for (const item of manualItems) {
+      const sharesByPerson: Record<string, number> = Object.fromEntries(people.map((person) => [person.id, 0]));
+      const price = Number(item.price) || 0;
+      if (people.length > 0) {
+        const share = price / people.length;
+        for (const person of people) sharesByPerson[person.id] = round2(share);
       }
-
-      evs.push({
-        eventId: `manual:${it.id}`,
-        label: `${it.name}`,
-        payerId,
+      paymentEvents.push({
+        eventId: `manual:${item.id}`,
+        label: item.name,
+        payerId: item.paidById,
         total: round2(price),
-        sharesByPerson: shares,
-        kind: 'manual',
+        sharesByPerson,
       });
     }
-
-    return evs;
+    return paymentEvents;
   }, [people, manualItems, receiptGroups, receiptPaidBy]);
 
-  /**
-   * 2) Unoptimized matrix:
-   * 각 event마다 "payer에게 바로 보내기" 방식으로
-   * from(person) -> to(payer) 로 shares를 그대로 누적
-   */
-  const unoptimizedMatrix = useMemo(() => {
-    const idx: Record<string, number> = {};
-    people.forEach((p: any, i: number) => (idx[p.id] = i));
-    const n = people.length;
-    const mat = Array.from({ length: n }, () => Array(n).fill(0) as number[]);
-
-    for (const ev of events) {
-      if (!ev.payerId) continue;
-      const payer = ev.payerId;
-
-      for (const p of people as any[]) {
-        if (p.id === payer) continue; // 본인은 자신에게 보낼 필요 없음
-        const amt = ev.sharesByPerson[p.id] ?? 0;
-        if (amt > 0.009) {
-          const r = idx[p.id];
-          const c = idx[payer];
-          mat[r][c] = round2(mat[r][c] + amt);
+  const rawMatrix = useMemo(() => {
+    const indexById: Record<string, number> = {};
+    people.forEach((person, index) => { indexById[person.id] = index; });
+    const matrix = Array.from({ length: people.length }, () => Array(people.length).fill(0) as number[]);
+    for (const event of events) {
+      if (!event.payerId) continue;
+      for (const person of people) {
+        if (person.id === event.payerId) continue;
+        const amount = event.sharesByPerson[person.id] ?? 0;
+        if (amount > 0.009) {
+          const row = indexById[person.id];
+          const column = indexById[event.payerId];
+          matrix[row][column] = round2(matrix[row][column] + amount);
         }
       }
     }
-
-    return mat;
+    return matrix;
   }, [people, events]);
 
-  /**
-   * 3) Optimized matrix:
-   * - owed: 전체 공평 부담액(= result에서 했던 것)
-   * - paid: 실제 결제액(= receipt payer가 receipt total, manual payer가 item price)
-   * - balance = paid - owed -> 최적 송금
-   */
-  const optimizedMatrix = useMemo(() => {
+  const settlement = useMemo(() => {
     const owed: Record<string, number> = {};
     const paid: Record<string, number> = {};
-    for (const p of people as any[]) {
-      owed[p.id] = 0;
-      paid[p.id] = 0;
+    for (const person of people) {
+      owed[person.id] = 0;
+      paid[person.id] = 0;
     }
 
-    // owed: manual = 균등분배
-    const n = people.length;
-    if (n > 0) {
-      for (const it of manualItems as any[]) {
-        const price = Number(it.price) || 0;
-        const share = price / n;
-        for (const p of people as any[]) owed[p.id] += share;
+    if (people.length > 0) {
+      for (const item of manualItems) {
+        const share = (Number(item.price) || 0) / people.length;
+        for (const person of people) owed[person.id] += share;
       }
     }
-
-    // owed: receipt = assignedIds 기반
-    for (const it of receiptItems as any[]) {
-      const price = Number(it.price) || 0;
-      const ids: string[] = it.assignedIds ?? [];
-      if (!ids.length) continue;
-      const share = price / ids.length;
-      for (const id of ids) {
-        if (owed[id] !== undefined) owed[id] += share;
-      }
+    for (const item of receiptItems) {
+      const assignedIds = item.assignedIds ?? [];
+      if (!assignedIds.length) continue;
+      const share = (Number(item.price) || 0) / assignedIds.length;
+      for (const id of assignedIds) if (owed[id] !== undefined) owed[id] += share;
+    }
+    for (const item of manualItems) {
+      if (item.paidById && paid[item.paidById] !== undefined) paid[item.paidById] += Number(item.price) || 0;
     }
 
-    // paid: manual = paidById
-    for (const it of manualItems as any[]) {
-      const payer = it.paidById as string | undefined;
-      if (!payer) continue;
-      if (paid[payer] !== undefined) paid[payer] += Number(it.price) || 0;
-    }
-
-    // paid: receipt = receiptId별 total을 receiptPaidBy[payer]에게
-    // receiptId별 total 계산
     const receiptTotals = new Map<string, number>();
-    for (const it of receiptItems as any[]) {
-      const rid = (it.receiptId as string) || 'r1';
-      receiptTotals.set(rid, (receiptTotals.get(rid) ?? 0) + (Number(it.price) || 0));
+    for (const item of receiptItems) {
+      const receiptId = item.receiptId || 'r1';
+      receiptTotals.set(receiptId, (receiptTotals.get(receiptId) ?? 0) + (Number(item.price) || 0));
     }
-
-    for (const [rid, t] of receiptTotals.entries()) {
-      const payer = (receiptPaidBy ?? {})[rid];
-      if (!payer) continue;
-      if (paid[payer] !== undefined) paid[payer] += t;
+    for (const [receiptId, total] of receiptTotals) {
+      const payerId = receiptPaidBy[receiptId];
+      if (payerId && paid[payerId] !== undefined) paid[payerId] += total;
     }
-
-    // rounding
     for (const id of Object.keys(owed)) owed[id] = round2(owed[id]);
     for (const id of Object.keys(paid)) paid[id] = round2(paid[id]);
 
     const balance: Record<string, number> = {};
     for (const id of Object.keys(owed)) balance[id] = round2((paid[id] ?? 0) - (owed[id] ?? 0));
-
     const transfers = computeTransfersFromBalance(balance);
-
-    // matrix build
-    const idx: Record<string, number> = {};
-    people.forEach((p: any, i: number) => (idx[p.id] = i));
-    const mat = Array.from({ length: people.length }, () => Array(people.length).fill(0) as number[]);
-
-    for (const t of transfers) {
-      const r = idx[t.fromId];
-      const c = idx[t.toId];
-      if (r !== undefined && c !== undefined) mat[r][c] = round2(mat[r][c] + t.amount);
+    const indexById: Record<string, number> = {};
+    people.forEach((person, index) => { indexById[person.id] = index; });
+    const matrix = Array.from({ length: people.length }, () => Array(people.length).fill(0) as number[]);
+    for (const transfer of transfers) {
+      const row = indexById[transfer.fromId];
+      const column = indexById[transfer.toId];
+      if (row !== undefined && column !== undefined) matrix[row][column] = round2(matrix[row][column] + transfer.amount);
     }
-    return mat;
+    return { owed, paid, balance, transfers, matrix };
   }, [people, manualItems, receiptItems, receiptPaidBy]);
 
-  const peopleIds = people.map((p: any) => p.id);
-
-  const tableCell = (txt: string, bold = false, dim = false) => (
-    <td
-      style={{
-        padding: 8,
-        border: '1px solid rgba(0,0,0,0.12)',
-        background: '#fff',
-        color: '#000',
-        fontWeight: bold ? 900 : 700,
-        opacity: dim ? 0.55 : 1,
-        textAlign: 'right',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {txt}
-    </td>
+  const rawTransfers = useMemo(() => transfersFromMatrix(rawMatrix, peopleIds), [rawMatrix, peopleIds]);
+  const participantViews = useMemo(
+    () => buildParticipantBalanceViews(people, settlement.paid, settlement.owed),
+    [people, settlement.paid, settlement.owed]
   );
-
-  const headerCell = (txt: string) => (
-    <th
-      style={{
-        padding: 8,
-        border: '1px solid rgba(0,0,0,0.12)',
-        background: '#fff',
-        color: '#000',
-        fontWeight: 900,
-        textAlign: 'left',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {txt}
-    </th>
+  const rawTransferViews = useMemo(() => buildTransferViews(rawTransfers, people), [rawTransfers, people]);
+  const optimizedTransferViews = useMemo(
+    () => buildTransferViews(settlement.transfers, people),
+    [settlement.transfers, people]
   );
+  const optimization = useMemo(
+    () => buildOptimizationSummary(rawTransfers, settlement.transfers),
+    [rawTransfers, settlement.transfers]
+  );
+  const consistency = useMemo(
+    () => checkSettlementConsistency(settlement.balance, rawTransfers, settlement.transfers),
+    [settlement.balance, rawTransfers, settlement.transfers]
+  );
+  const totalExpense = round2(Object.values(settlement.owed).reduce((sum, amount) => sum + amount, 0));
+  const hasItems = items.length > 0;
+  const incomplete = receiptItems.some((item) => !(item.assignedIds ?? []).length)
+    || manualItems.some((item) => !item.paidById)
+    || receiptGroups.some((group) => !receiptPaidBy[group.receiptId]);
 
-  const renderMatrix = (mat: number[][], title: string) => (
-    <div
-      className="responsive-scroll"
-      style={{
-        borderRadius: 14,
-        border: '1px solid rgba(255,255,255,0.25)',
-        background: 'rgba(255,255,255,0.10)',
-        padding: 16,
-        marginBottom: 14,
-        overflowX: 'auto',
-      }}
-    >
-      <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8, color: '#fff' }}>{title}</div>
-      <div style={{ fontSize: 13, opacity: 0.85, color: '#fff', marginBottom: 10 }}>
-        Rows send → Columns receive
-      </div>
-
-      <table style={{ borderCollapse: 'collapse', minWidth: 520 }}>
-        <thead>
-          <tr>
-            {headerCell('send/receive')}
-            {peopleIds.map((id) => headerCell(nameOf(id)))}
-          </tr>
-        </thead>
-        <tbody>
-          {peopleIds.map((fromId, r) => (
-            <tr key={fromId}>
-              {headerCell(nameOf(fromId))}
-              {peopleIds.map((toId, c) => {
-                const v = mat[r]?.[c] ?? 0;
-                return tableCell(v ? v.toFixed(2) : '0', false, !v);
-              })}
+  const renderMatrix = (matrix: number[][], title: string, caption: string) => (
+    <div className="matrix-block">
+      <h3>{title}</h3>
+      <p>{caption} Read each row as the sender and each column as the receiver. A non-zero value means the row person sends that amount to the column person; zero means no direct transfer.</p>
+      <div className="responsive-scroll">
+        <table className="settlement-matrix">
+          <caption>{title}. Rows are senders and columns are receivers.</caption>
+          <thead>
+            <tr>
+              <th scope="col">Sender \ Receiver</th>
+              {peopleIds.map((id) => <th scope="col" key={id}>{nameOf(id)}</th>)}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {peopleIds.map((fromId, row) => (
+              <tr key={fromId}>
+                <th scope="row">{nameOf(fromId)}</th>
+                {peopleIds.map((toId, column) => (
+                  <td key={toId}>{formatCurrency(matrix[row]?.[column] ?? 0)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
+  if (people.length === 0) {
+    return (
+      <main className="app-page settlement-page">
+        <h1>How did it work?</h1>
+        <div className="settlement-empty"><h2>Add participants first</h2><p>There is no settlement to explain yet.</p><Link href="/add_ppl">Go to add people</Link></div>
+      </main>
+    );
+  }
+
+  if (!hasItems) {
+    return (
+      <main className="app-page settlement-page">
+        <h1>How did it work?</h1>
+        <div className="settlement-empty"><h2>Add expenses first</h2><p>Participants are ready, but there are no items to calculate.</p><Link href="/add_item">Go to add items</Link></div>
+      </main>
+    );
+  }
+
   return (
-    <main className="app-page" style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>How did it work?</h1>
-          <p style={{ marginTop: 8, opacity: 0.85 }}>
-            Left: payer-based breakdown (who should reimburse per payment). Right: matrices (raw vs optimized).
-          </p>
+    <main className="app-page settlement-page">
+      <header className="settlement-page-header">
+        <div><p className="eyebrow">Settlement explanation</p><h1>How did it work?</h1><p>See what to pay now, why each balance exists, and what Dutchie simplified.</p></div>
+        <Link className="settlement-back-link" href="/dutchie">Back to DUTCHIE</Link>
+      </header>
+
+      {incomplete && <div className="settlement-warning" role="alert"><strong>Some selections are incomplete.</strong> Unassigned items or missing payers remain excluded by the existing calculation. Review them before settling.</div>}
+      {!incomplete && consistency.balanced ? (
+        <div className="settlement-status" role="status"><strong>✓ Calculation balanced</strong><span>Ready to settle</span></div>
+      ) : !incomplete && (
+        <div className="settlement-warning" role="alert"><strong>Calculation needs review.</strong>{consistency.messages.map((message) => <span key={message}>{message}</span>)}</div>
+      )}
+
+      <section aria-labelledby="summary-heading" className="settlement-summary">
+        <p className="eyebrow">What do we need to do now?</p>
+        <h2 id="summary-heading">Everyone can settle with {optimization.optimizedTransferCount} {optimization.optimizedTransferCount === 1 ? 'payment' : 'payments'}.</h2>
+        <p>Dutchie simplified the payment flow from {optimization.rawTransferCount} {optimization.rawTransferCount === 1 ? 'transfer' : 'transfers'} to {optimization.optimizedTransferCount}.</p>
+        <div className="settlement-metrics">
+          <div><span>Total group expense</span><strong>{formatCurrency(totalExpense)}</strong></div>
+          <div><span>Participants</span><strong>{people.length}</strong></div>
+          <div><span>Before</span><strong>{optimization.rawTransferCount}</strong></div>
+          <div><span>Final transfers</span><strong>{optimization.optimizedTransferCount}</strong></div>
+          <div><span>Transfers removed</span><strong>{optimization.removedTransferCount}</strong></div>
         </div>
+      </section>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Link href="/dutchie">
-            <button
-              style={{
-                padding: '10px 14px',
-                borderRadius: 12,
-                border: '1px solid rgba(255,255,255,0.35)',
-                background: '#fff',
-                color: '#000',
-                cursor: 'pointer',
-                fontWeight: 900,
-              }}
-            >
-              Back to DUTCHIE
-            </button>
-          </Link>
+      <section aria-labelledby="final-transfers-heading" className="settlement-section settlement-primary-section">
+        <p className="eyebrow">Final transfers</p><h2 id="final-transfers-heading">Who sends money to whom?</h2>
+        <TransferCards transfers={optimizedTransferViews} />
+      </section>
+
+      <section aria-labelledby="people-heading" className="settlement-section settlement-surface">
+        <p className="eyebrow">Per-person explanation</p><h2 id="people-heading">Why does each person owe or receive money?</h2>
+        <p>Net balance = amount paid − fair share. A positive balance receives money, a negative balance owes money, and a zero balance is settled.</p>
+        <div className="participant-balance-grid">
+          {participantViews.map((participant) => (
+            <article className={`participant-balance-card balance-${participant.status}`} key={participant.participantId}>
+              <div className="participant-card-heading"><h3>{participant.name}</h3><span>{participant.status === 'receives' ? '↑ Receives' : participant.status === 'owes' ? '↓ Owes' : '✓ Settled'}</span></div>
+              <dl><div><dt>Paid</dt><dd>{formatCurrency(participant.paid)}</dd></div><div><dt>Fair share</dt><dd>{formatCurrency(participant.fairShare)}</dd></div><div><dt>Net balance</dt><dd>{participant.net > 0 ? '+' : ''}{formatCurrency(participant.net)}</dd></div></dl>
+              <p>{participant.explanation}</p>
+            </article>
+          ))}
         </div>
-      </div>
+      </section>
 
-      <div className="responsive-columns" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14, flexWrap: 'wrap' }}>
-        {/* LEFT: payer-based charts */}
-        <section className="responsive-panel" style={{ flex: 1, minWidth: 360, maxWidth: 520 }}>
-          <div
-            style={{
-              borderRadius: 14,
-              border: '1px solid rgba(255,255,255,0.25)',
-              background: 'rgba(255,255,255,0.10)',
-              padding: 16,
-              marginBottom: 14,
-            }}
-          >
-            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 8 }}>1) Payer breakdown</div>
-            <div style={{ fontSize: 13, opacity: 0.85 }}>
-              For each payment (Receipt or Manual), this shows how much each person owes for that payment.
-            </div>
-          </div>
+      <section aria-labelledby="optimization-heading" className="settlement-section settlement-surface">
+        <p className="eyebrow">Before versus after</p><h2 id="optimization-heading">What did Dutchie optimize?</h2>
+        <div className="optimization-count" aria-label={`${optimization.rawTransferCount} transfers before, ${optimization.optimizedTransferCount} transfers after`}>
+          <strong>{optimization.rawTransferCount} transfers</strong><span aria-hidden="true">→</span><strong>{optimization.optimizedTransferCount} transfers</strong>
+        </div>
+        <p><strong>{optimization.removedTransferCount} {optimization.removedTransferCount === 1 ? 'transfer' : 'transfers'} removed.</strong> Dutchie does not change what each person owes. It only simplifies who pays whom.</p>
+        <div className="optimization-grid">
+          <article><h3>Before optimization</h3><p>{optimization.rawTransferCount} direct reimbursement relationships from individual payments.</p><TransferCards transfers={rawTransferViews} compact /></article>
+          <article><h3>After Dutchie</h3><p>{optimization.optimizedTransferCount} final balance-based relationships.</p><TransferCards transfers={optimizedTransferViews} compact /></article>
+        </div>
+      </section>
 
-          {events.length === 0 ? (
-            <div style={{ opacity: 0.85 }}>No events. Add items and selections first.</div>
-          ) : (
-            events.map((ev) => (
-              <div
-                key={ev.eventId}
-                style={{
-                  borderRadius: 14,
-                  border: '1px solid rgba(255,255,255,0.25)',
-                  background: 'rgba(255,255,255,0.10)',
-                  padding: 16,
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ fontWeight: 900 }}>
-                    {ev.payerId ? `${nameOf(ev.payerId)} payment` : '(payer not selected)'} — {ev.label}
-                  </div>
-                  <div style={{ fontWeight: 900, opacity: 0.9 }}>total: ${ev.total.toFixed(2)}</div>
-                </div>
+      <section aria-labelledby="method-heading" className="settlement-section settlement-surface calculation-method">
+        <p className="eyebrow">Calculation method</p><h2 id="method-heading">How was everything calculated?</h2>
+        <ol><li><strong>Add what each person paid.</strong><span>Receipt and manual-item payers provide the paid totals.</span></li><li><strong>Calculate each fair share.</strong><span>Manual items are shared equally; receipt items use the selected participants.</span></li><li><strong>Compare paid amount and fair share.</strong><span>Amount paid − Fair share = Net balance.</span></li><li><strong>Create the required balances.</strong><span>Positive receives, negative owes, and zero is settled.</span></li><li><strong>Simplify transfer paths.</strong><span>The existing settlement routine changes the path, not each person’s final balance.</span></li></ol>
+      </section>
 
-                <div className="responsive-scroll" style={{ marginTop: 10, overflowX: 'auto' }}>
-                  <table style={{ borderCollapse: 'collapse', minWidth: 420 }}>
-                    <thead>
-                      <tr>
-                        {headerCell('name')}
-                        {headerCell('owe')}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {peopleIds.map((pid) => (
-                        <tr key={pid}>
-                          {headerCell(nameOf(pid))}
-                          {tableCell((ev.sharesByPerson[pid] ?? 0).toFixed(2))}
-                        </tr>
-                      ))}
-                      <tr>
-                        {headerCell('total')}
-                        {tableCell(
-                          round2(Object.values(ev.sharesByPerson).reduce((s, v) => s + v, 0)).toFixed(2),
-                          true
-                        )}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-                  * For manual items, “owe” is equal split. For receipt items, “owe” comes from your split selections.
-                </div>
-              </div>
-            ))
-          )}
-        </section>
-
-        {/* RIGHT: matrices */}
-        <section className="responsive-panel" style={{ flex: 1, minWidth: 360, maxWidth: 980 }}>
-          {renderMatrix(unoptimizedMatrix, '2) Raw (not optimized) transfer matrix')}
-          {renderMatrix(optimizedMatrix, '3) Optimized transfer matrix')}
-        </section>
-      </div>
+      <details className="settlement-details">
+        <summary>View detailed calculation</summary>
+        <div className="details-content">
+          <h2>Payment breakdown and matrices</h2>
+          <p>These tables preserve the original calculation data for inspection. Dollar values are rounded exactly as in the current screen.</p>
+          <details><summary>View payer-based breakdown</summary><div className="event-list">{events.map((event) => <article className="matrix-block" key={event.eventId}><h3>{event.payerId ? `${nameOf(event.payerId)} paid` : 'Payer not selected'} — {event.label}</h3><p>Total: {formatCurrency(event.total)}. Manual items use equal shares; receipt items use selected participants.</p><div className="responsive-scroll"><table className="settlement-matrix"><caption>{event.label} responsibility by participant</caption><thead><tr><th scope="col">Participant</th><th scope="col">Responsible amount</th></tr></thead><tbody>{peopleIds.map((id) => <tr key={id}><th scope="row">{nameOf(id)}</th><td>{formatCurrency(event.sharesByPerson[id] ?? 0)}</td></tr>)}</tbody></table></div></article>)}</div></details>
+          {renderMatrix(rawMatrix, 'Raw transfer matrix', 'This follows each payment directly back to its payer before balances are combined.')}
+          {renderMatrix(settlement.matrix, 'Optimized transfer matrix', 'This shows the existing final settlement transfers after balances are combined.')}
+          <details><summary>Technical notes and checks</summary><p>The optimized view uses the existing debtor-to-creditor settlement routine and its current cent rounding. It does not claim a globally minimal solution.</p><ul><li>Participant balance sum: {formatCurrency(Object.values(settlement.balance).reduce((sum, value) => sum + value, 0))}</li><li>Raw transfer total: {formatCurrency(optimization.rawTotal)}</li><li>Optimized transfer total: {formatCurrency(optimization.optimizedTotal)}</li><li>Consistency status: {consistency.balanced ? 'Passed' : 'Needs review'}</li></ul></details>
+        </div>
+      </details>
     </main>
   );
 }

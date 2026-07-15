@@ -253,3 +253,151 @@ svg {
     max-width: calc(100vw - 32px);
   }
 }
+
+/* Settlement explainability */
+.settlement-page {
+  color: #fff;
+  max-width: 1040px;
+  line-height: 1.45;
+}
+
+.settlement-page h1,
+.settlement-page h2,
+.settlement-page h3,
+.settlement-page p {
+  overflow-wrap: anywhere;
+}
+
+.settlement-page-header,
+.settlement-status,
+.participant-card-heading,
+.optimization-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settlement-page-header { margin: 6px 0 28px; padding-bottom: 22px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.settlement-page-header h1 { margin: 2px 0 8px; font-size: clamp(30px, 5vw, 44px); letter-spacing: -.035em; }
+.settlement-page-header p { margin: 0; max-width: 620px; color: rgba(255,255,255,.66); }
+.settlement-back-link { color: #fff; background: transparent; padding: 10px 13px; border: 1px solid rgba(255,255,255,.3); border-radius: 10px; font-weight: 800; text-decoration: none; flex: 0 0 auto; transition: background-color .15s ease; }
+.settlement-back-link:hover { background: rgba(255,255,255,.1); }
+.eyebrow { margin: 0 0 5px !important; color: #6ee7b7 !important; font-size: 11px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+
+.settlement-status,
+.settlement-warning,
+.settlement-empty {
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.settlement-status { background: rgba(16,185,129,.11); border: 1px solid rgba(110,231,183,.32); }
+.settlement-status span { color: rgba(255,255,255,.78); }
+.settlement-warning { display: grid; gap: 5px; color: #1c1400; background: #fde68a; border: 1px solid #fbbf24; }
+.settlement-empty { color: #111; background: rgba(255,255,255,.9); }
+.settlement-empty h2 { margin-top: 0; }
+.settlement-empty a { color: #111; font-weight: 900; }
+
+.settlement-summary {
+  padding: clamp(18px, 3vw, 26px);
+  border: 1px solid rgba(110,231,183,.28);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(16,185,129,.15), rgba(255,255,255,.055) 62%);
+  box-shadow: 0 18px 48px rgba(0,0,0,.2);
+}
+.settlement-summary h2 { max-width: 720px; margin: 5px 0 8px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.025em; }
+.settlement-summary > p:not(.eyebrow) { margin: 0; color: rgba(255,255,255,.7); }
+
+.settlement-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+.settlement-metrics > div { display: grid; gap: 6px; min-width: 0; padding: 13px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(0,0,0,.16); }
+.settlement-metrics span { font-size: 12px; color: rgba(255,255,255,.72); }
+.settlement-metrics strong { font-size: 20px; }
+
+.settlement-section { margin-top: 42px; }
+.settlement-section > h2 { margin: 4px 0 8px; font-size: clamp(22px, 4vw, 30px); }
+.settlement-section > p { max-width: 760px; color: rgba(255,255,255,.66); }
+.settlement-surface { padding: clamp(17px, 3vw, 24px); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; background: rgba(255,255,255,.045); }
+.settlement-primary-section { padding: 4px 0 2px; }
+
+.transfer-card-list { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+.transfer-card { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 7px 14px; padding: 15px 16px; border-radius: 13px; color: #f8fafc; background: #151515; border: 1px solid rgba(255,255,255,.14); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.transfer-sequence { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: #052e24; background: #6ee7b7; font-weight: 900; }
+.transfer-route { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.transfer-route strong { min-width: 0; overflow-wrap: anywhere; }
+.transfer-arrow { flex: 0 0 auto; color: #6ee7b7; font-size: 20px; }
+.transfer-amount { white-space: nowrap; color: #fff; font-size: 19px; }
+.transfer-sentence { grid-column: 2 / -1; color: rgba(255,255,255,.58); font-size: 13px; }
+.transfer-card-compact { grid-template-columns: 28px minmax(0, 1fr) auto; padding: 10px; }
+.transfer-card-compact .transfer-sequence { width: 26px; height: 26px; font-size: 12px; }
+
+.participant-balance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.participant-balance-card { min-width: 0; padding: 17px; border-radius: 13px; color: #f8fafc; background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.1); border-top: 3px solid #64748b; }
+.participant-balance-card.balance-receives { border-top-color: #34d399; }
+.participant-balance-card.balance-owes { border-top-color: #fb7185; }
+.participant-card-heading h3 { margin: 0; overflow-wrap: anywhere; }
+.participant-card-heading span { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; background: rgba(255,255,255,.08); font-size: 12px; font-weight: 900; }
+.participant-balance-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
+.participant-balance-card dl > div { display: grid; gap: 4px; }
+.participant-balance-card dt { color: rgba(255,255,255,.52); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.participant-balance-card dd { margin: 0; font-weight: 900; overflow-wrap: anywhere; }
+.participant-balance-card p { margin: 0; padding-top: 13px; border-top: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.68); font-size: 13px; line-height: 1.55; }
+
+.optimization-count { justify-content: flex-start; font-size: clamp(20px, 5vw, 30px); margin: 15px 0; }
+.optimization-count span { color: #a7f3d0; }
+.optimization-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.optimization-grid > article { min-width: 0; padding: 15px; border-radius: 13px; border: 1px solid rgba(255,255,255,.1); background: rgba(0,0,0,.16); }
+.optimization-grid h3 { margin-top: 0; }
+.optimization-grid article > p { color: rgba(255,255,255,.75); }
+
+.calculation-method ol { display: grid; gap: 10px; padding-left: 24px; }
+.calculation-method li { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.09); }
+.calculation-method li:last-child { border-bottom: 0; }
+.calculation-method li span { display: block; margin-top: 3px; color: rgba(255,255,255,.72); }
+
+.settlement-details { margin-top: 28px; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; background: rgba(255,255,255,.035); }
+.settlement-details summary { cursor: pointer; padding: 16px; font-weight: 900; }
+.settlement-details summary:hover { background: rgba(255,255,255,.045); }
+.details-content { padding: 0 16px 16px; }
+.details-content > details { border: 1px solid rgba(255,255,255,.18); border-radius: 12px; margin: 12px 0; }
+.details-content > details > summary { padding: 12px; }
+.details-content > details > *:not(summary) { margin-inline: 12px; }
+.event-list { display: grid; gap: 12px; padding-bottom: 12px; }
+.matrix-block { margin-top: 16px; padding: 14px; border-radius: 12px; background: rgba(0,0,0,.18); }
+.matrix-block h3 { margin: 0 0 6px; }
+.matrix-block p { margin: 0 0 12px; color: rgba(255,255,255,.75); font-size: 13px; line-height: 1.5; }
+.settlement-matrix { border-collapse: collapse; min-width: 520px; width: 100%; color: #111; background: #fff; }
+.settlement-matrix caption { text-align: left; color: #fff; background: #222; padding: 8px; font-weight: 800; }
+.settlement-matrix th,
+.settlement-matrix td { padding: 9px; border: 1px solid #d1d5db; text-align: right; white-space: nowrap; }
+.settlement-matrix th { text-align: left; background: #f3f4f6; }
+
+@media (max-width: 760px) {
+  .settlement-page-header { align-items: flex-start; flex-direction: column; }
+  .settlement-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settlement-metrics > div:last-child { grid-column: 1 / -1; }
+  .participant-balance-grid,
+  .optimization-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 430px) {
+  .settlement-page { padding-inline: 12px !important; }
+  .settlement-summary,
+  .settlement-surface { border-radius: 14px; }
+  .settlement-status,
+  .participant-card-heading { align-items: flex-start; flex-direction: column; }
+  .transfer-card,
+  .transfer-card-compact { grid-template-columns: 30px minmax(0, 1fr); }
+  .transfer-amount { grid-column: 2; }
+  .transfer-sentence { grid-column: 2; }
+  .transfer-route { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .transfer-arrow { transform: rotate(90deg); line-height: 1; }
+  .participant-balance-card dl { grid-template-columns: 1fr; }
+  .optimization-count { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .optimization-count span { transform: rotate(90deg); margin-left: 8px; }
+}

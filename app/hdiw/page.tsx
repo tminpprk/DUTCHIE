@@ -289,7 +289,17 @@ export default function HowItWorksPage() {
     <main className="app-page settlement-page">
       <header className="settlement-page-header">
         <div><p className="eyebrow">Settlement explanation</p><h1>How did it work?</h1><p>See what to pay now, why each balance exists, and what Dutchie simplified.</p></div>
-        <Link className="settlement-back-link" href="/dutchie">Back to DUTCHIE</Link>
+        <div className="settlement-header-actions">
+          <button
+            className="settlement-share-button"
+            type="button"
+            onClick={() => window.print()}
+            aria-label="Share or save this settlement as a PDF"
+          >
+            Share / Save PDF
+          </button>
+          <Link className="settlement-back-link" href="/dutchie">Back to DUTCHIE</Link>
+        </div>
       </header>
 
       {incomplete && <div className="settlement-warning" role="alert"><strong>Some selections are incomplete.</strong> Unassigned items or missing payers remain excluded by the existing calculation. Review them before settling.</div>}

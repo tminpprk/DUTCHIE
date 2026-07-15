@@ -1,6 +1,6 @@
 # DUTCHIE
 
-DUTCHIE is an AI-assisted group-expense settlement web application. It turns receipt images and manually entered expenses into editable items, lets a group decide who shared each cost and who paid, then produces a simplified set of repayment transfers.
+DUTCHIE is an AI-assisted group-expense settlement assisting web application. It turns receipt images and manually entered expenses into editable items, lets a group decide who shared each cost and who paid, then produces a simplified set of repayment transfers.
 
 The product is designed around a practical constraint: receipt OCR is never perfect. DUTCHIE combines multi-provider OCR with human review instead of treating extracted values as unquestionable. Every receipt-derived item name and price can be corrected before it enters the settlement flow.
 
@@ -84,11 +84,11 @@ Missing or invalid `OCR_PROVIDER` values safely default to `auto`.
 
 ### What OCR does and does not do
 
-The provider layer recognizes document text and word geometry. Its output still enters DUTCHIE's existing client-side price parser. The application does not currently perform semantic item-description extraction, merchant-specific parsing, or guaranteed subtotal reconciliation.
+The provider layer recognizes document text and word geometry. Its output still enters DUTCHIE's existing client-side price parser. The application does not currently perform semantic item-description extraction or guaranteed subtotal reconciliation.
 
 Extracted prices initially receive generated names such as `r1-1` and `r1-2`. Users can rename items, correct prices, name the receipt, and remove incorrect items before continuing.
 
-Receipt images are processed only for the current request. DUTCHIE does not intentionally persist receipt images, log image bytes, or expose raw provider errors to the client.
+Receipt images are processed only for the current request. DUTCHIE does not intentionally persist receipt images or log image bytes.
 
 ## Settlement and Explainability
 
@@ -196,20 +196,6 @@ gcloud auth application-default login
 
 Never commit `.env`, `.env.local`, NVIDIA API keys, or service-account credentials.
 
-## Cloud Run Deployment
-
-The GitHub repository contains source code, not production secrets. Configure these values on the Cloud Run service:
-
-```text
-OCR_PROVIDER
-NVIDIA_OCR_ENDPOINT
-NVIDIA_API_KEY
-```
-
-Store `NVIDIA_API_KEY` in Google Secret Manager and expose it to the Cloud Run revision as an environment variable. `NVIDIA_OCR_ENDPOINT` and `OCR_PROVIDER` can be regular Cloud Run environment variables. The Cloud Run service account supplies Google ADC for the fallback provider and must have the required Google Vision and Secret Manager permissions.
-
-Do not add production secrets to the Docker image, source code, GitHub repository, or build logs.
-
 ## Validation
 
 Run the focused tests, lint, and production build with:
@@ -260,9 +246,4 @@ Major sections stack on narrow screens, fixed navigation controls reserve safe s
 - [OCR provider architecture](docs/OCR_PROVIDER_ARCHITECTURE.md)
 - [Settlement explainability](docs/SETTLEMENT_EXPLAINABILITY.md)
 - [Responsive UI audit](docs/RESPONSIVE_UI_AUDIT.md)
-
-## Project Positioning
-
-DUTCHIE is a portfolio project demonstrating AI-assisted receipt understanding, multi-provider document processing, human-in-the-loop correction, responsive product design, deterministic settlement logic, and calculation explainability.
-
-It does not train its own AI model. NVIDIA Nemotron OCR and Google Cloud Vision provide document recognition, while DUTCHIE owns the review workflow, expense assignment, settlement calculation, transfer presentation, and trust-oriented explanation layer.
+- 

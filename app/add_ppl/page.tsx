@@ -13,6 +13,7 @@ export default function AddPeoplePage() {
 
   return (
     <main
+      className="app-page"
       style={{
         minHeight: '100vh',
         padding: 24,
@@ -45,6 +46,7 @@ export default function AddPeoplePage() {
 
       {/* 반투명 박스: layout으로 자연스럽게 확장 */}
       <motion.div
+        className="responsive-card"
         layout
         transition={{ duration: 0.25, ease: 'easeOut' }}
         style={{
@@ -67,6 +69,7 @@ export default function AddPeoplePage() {
           <div style={{ display: 'grid', gap: 10 }}>
             {people.map((m, idx) => (
               <motion.div
+                className="responsive-item-row"
                 layout
                 key={m.id}
                 style={{
@@ -80,12 +83,13 @@ export default function AddPeoplePage() {
                   border: '1px solid rgba(0,0,0,0.10)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                <div className="responsive-item-main" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                   <span style={{ fontWeight: 700, opacity: 0.7, minWidth: 22 }}>
                     {idx + 1}.
                   </span>
 
                   <input
+                    aria-label={`Participant ${idx + 1} name`}
                     value={m.name}
                     onChange={(e) => {
                       const nextName = e.target.value;
@@ -125,6 +129,8 @@ export default function AddPeoplePage() {
       {/* 다음 페이지 화살표 */}
       <Link href="/add_item" aria-label="Next page">
         <button
+          className="fixed-next-control"
+          aria-label="Continue to add items"
           style={{
             position: 'fixed',
             right: 24,

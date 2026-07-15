@@ -56,7 +56,7 @@ export default function ResultPage() {
   }, [people, manualItems, receiptItems]);
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', position: 'relative' }}>
+    <main className="app-page" style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', position: 'relative' }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10, color: '#ffffffff' }}>
         overview
       </h1>
@@ -87,7 +87,7 @@ export default function ResultPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14 }}>
+      <div className="responsive-columns" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14 }}>
         {/* LEFT: per-person totals */}
         <section style={{ flex: 1, maxWidth: 760 }}>
           <div
@@ -99,7 +99,7 @@ export default function ResultPage() {
               color: '#ffffffff',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+            <div className="responsive-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>
                 Each person pays
               </h2>
@@ -111,6 +111,7 @@ export default function ResultPage() {
             <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
               {people.map((p) => (
                 <div
+                  className="responsive-item-row"
                   key={p.id}
                   style={{
                     padding: 12,
@@ -137,7 +138,7 @@ export default function ResultPage() {
         </section>
 
         {/* RIGHT: breakdown */}
-        <section style={{ width: 360 }}>
+        <section className="responsive-fixed-panel" style={{ width: 360 }}>
           <div
             style={{
               borderRadius: 14,
@@ -226,6 +227,7 @@ export default function ResultPage() {
 
       <Link href="/dutchie">
   <button
+    className="fixed-wide-control"
     style={{
   position: 'fixed',
   right: 30,

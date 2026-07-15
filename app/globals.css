@@ -30,3 +30,226 @@ html, body {
   color: #ffffff;
   min-height: 100%;
 }
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+[role='button'],
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+button {
+  min-height: 40px;
+}
+
+button:focus-visible,
+[role='button']:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid #7dd3fc;
+  outline-offset: 3px;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+.app-page {
+  width: min(100%, 1280px);
+  margin-inline: auto;
+  padding: clamp(16px, 3vw, 24px) !important;
+  padding-bottom: calc(104px + env(safe-area-inset-bottom)) !important;
+  overflow-wrap: anywhere;
+}
+
+.home-page {
+  min-height: 100svh;
+  height: auto !important;
+  padding: 24px 16px;
+}
+
+.home-hero {
+  width: min(100%, 680px);
+}
+
+.responsive-columns,
+.responsive-header-row,
+.responsive-item-row {
+  min-width: 0;
+}
+
+.responsive-columns > *,
+.responsive-header-row > *,
+.responsive-item-row > * {
+  min-width: 0;
+}
+
+.responsive-panel,
+.responsive-card {
+  max-width: 100%;
+  min-width: 0 !important;
+}
+
+.responsive-summary-column {
+  min-width: 0;
+}
+
+.responsive-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.responsive-receipt-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(70svh, 760px);
+  object-fit: contain;
+}
+
+.fixed-next-control {
+  right: max(16px, env(safe-area-inset-right)) !important;
+  bottom: max(16px, env(safe-area-inset-bottom)) !important;
+  min-width: 48px;
+  min-height: 48px;
+  z-index: 20;
+}
+
+.fixed-wide-control {
+  right: max(16px, env(safe-area-inset-right)) !important;
+  bottom: max(16px, env(safe-area-inset-bottom)) !important;
+  z-index: 20;
+}
+
+.keyboard-editable {
+  border-radius: 3px;
+}
+
+@media (max-width: 900px) {
+  .responsive-columns {
+    flex-direction: column !important;
+    gap: 16px !important;
+    width: 100%;
+  }
+
+  .responsive-panel,
+  .responsive-fixed-panel,
+  .responsive-summary-column,
+  .responsive-columns > section {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .responsive-summary-column {
+    align-items: stretch !important;
+  }
+
+  .responsive-card {
+    width: 100% !important;
+  }
+
+  .responsive-header-row {
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+  }
+
+  .responsive-item-row {
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+  }
+
+  .responsive-item-main {
+    flex: 1 1 210px;
+    overflow-wrap: anywhere;
+  }
+
+  .responsive-form-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(88px, 0.55fr) !important;
+  }
+
+  .responsive-form-grid > button {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .responsive-nav-row a,
+  .responsive-nav-row button {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-page {
+    padding-inline: 14px !important;
+  }
+
+  .home-page h1 {
+    font-size: clamp(42px, 17vw, 56px) !important;
+    overflow-wrap: normal;
+  }
+
+  .responsive-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .responsive-form-grid > button {
+    grid-column: auto;
+  }
+
+  .mobile-stack-row {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .mobile-stack-row > * {
+    width: 100%;
+  }
+
+  .responsive-scroll table {
+    font-size: 14px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .fixed-wide-control {
+    width: auto !important;
+    min-width: 96px;
+    max-width: calc(100vw - 32px);
+  }
+}

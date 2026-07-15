@@ -94,7 +94,7 @@ export default function PaymentPage() {
   };
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
+    <main className="app-page" style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>
         who paid for...
       </h1>
@@ -178,7 +178,7 @@ export default function PaymentPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      <div className="responsive-columns" style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
         {/* LEFT */}
         <section style={{ flex: 1, maxWidth: 900 }}>
           {/* Receipts */}
@@ -198,7 +198,7 @@ export default function PaymentPage() {
                     border: '1px solid rgba(0,0,0,0.12)',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                  <div className="responsive-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
                     <div style={{ fontWeight: 900 }}>
                       Receipt #{idx + 1}{' '}
                       <span style={{ opacity: 0.75, fontWeight: 800 }}>
@@ -256,7 +256,7 @@ export default function PaymentPage() {
                     border: '1px solid rgba(0,0,0,0.12)',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                  <div className="responsive-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
                     <div style={{ fontWeight: 900 }}>
                       {it.name}{' '}
                       <span style={{ opacity: 0.75, fontWeight: 800 }}>
@@ -297,7 +297,7 @@ export default function PaymentPage() {
         </section>
 
         {/* RIGHT: paid summary */}
-        <section style={{ width: 360 }}>
+        <section className="responsive-fixed-panel" style={{ width: 360 }}>
           <div
             style={{
               borderRadius: 14,
@@ -313,6 +313,7 @@ export default function PaymentPage() {
             <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
               {people.map((p: any) => (
                 <div
+                  className="responsive-item-row"
                   key={p.id}
                   style={{
                     padding: 12,
@@ -344,7 +345,7 @@ export default function PaymentPage() {
       </div>
 
       {/* Navigation */}
-      <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="responsive-nav-row" style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <Link href="/split">
           <button
             style={{
@@ -364,6 +365,8 @@ export default function PaymentPage() {
       {/* 다음 페이지 화살표 (일단 /result로) */}
       <Link href="/result" aria-label="Next page">
         <button
+          className="fixed-next-control"
+          aria-label="Continue to result"
           style={{
             position: 'fixed',
             right: 24,

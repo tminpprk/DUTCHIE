@@ -4,6 +4,7 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <main
+      className="home-page"
       style={{
         height: '100vh',
         display: 'flex',
@@ -12,7 +13,7 @@ export default function Home() {
         fontFamily: 'system-ui',
       }}
     >
-      <div style={{ textAlign: 'center' }}>
+      <div className="home-hero" style={{ textAlign: 'center' }}>
         {/* Title */}
         <h1
           style={{

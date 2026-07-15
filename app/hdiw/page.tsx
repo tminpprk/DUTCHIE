@@ -293,6 +293,7 @@ export default function HowItWorksPage() {
 
   const renderMatrix = (mat: number[][], title: string) => (
     <div
+      className="responsive-scroll"
       style={{
         borderRadius: 14,
         border: '1px solid rgba(255,255,255,0.25)',
@@ -330,7 +331,7 @@ export default function HowItWorksPage() {
   );
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
+    <main className="app-page" style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>How did it work?</h1>
@@ -358,9 +359,9 @@ export default function HowItWorksPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14, flexWrap: 'wrap' }}>
+      <div className="responsive-columns" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14, flexWrap: 'wrap' }}>
         {/* LEFT: payer-based charts */}
-        <section style={{ flex: 1, minWidth: 360, maxWidth: 520 }}>
+        <section className="responsive-panel" style={{ flex: 1, minWidth: 360, maxWidth: 520 }}>
           <div
             style={{
               borderRadius: 14,
@@ -397,7 +398,7 @@ export default function HowItWorksPage() {
                   <div style={{ fontWeight: 900, opacity: 0.9 }}>total: ${ev.total.toFixed(2)}</div>
                 </div>
 
-                <div style={{ marginTop: 10, overflowX: 'auto' }}>
+                <div className="responsive-scroll" style={{ marginTop: 10, overflowX: 'auto' }}>
                   <table style={{ borderCollapse: 'collapse', minWidth: 420 }}>
                     <thead>
                       <tr>
@@ -432,7 +433,7 @@ export default function HowItWorksPage() {
         </section>
 
         {/* RIGHT: matrices */}
-        <section style={{ flex: 1, minWidth: 360, maxWidth: 980 }}>
+        <section className="responsive-panel" style={{ flex: 1, minWidth: 360, maxWidth: 980 }}>
           {renderMatrix(unoptimizedMatrix, '2) Raw (not optimized) transfer matrix')}
           {renderMatrix(optimizedMatrix, '3) Optimized transfer matrix')}
         </section>

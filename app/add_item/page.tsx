@@ -455,6 +455,12 @@ const removeItem = (itemId: string) => {
   if (editingPriceId === itemId) cancelPriceEdit();
 };
 
+const removeReceiptGroup = (receiptId: string) => {
+  setItems((prev) => prev.filter((item) => (
+    item.source !== 'receipt' || (item.receiptId || 'r1') !== receiptId
+  )));
+};
+
 
   const clearReceiptItems = () => {
     setItems((prev: any[]) => prev.filter((x) => x.source !== 'receipt'));
@@ -462,10 +468,10 @@ const removeItem = (itemId: string) => {
   };
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
-      <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
+    <main className="app-page" style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
+      <div className="responsive-columns" style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
         {/* ================= LEFT ================= */}
-        <section style={{ width: 420 }}>
+        <section className="responsive-fixed-panel" style={{ width: 420 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 18 }}>
             what are you paying together?
           </h1>
@@ -520,6 +526,7 @@ const removeItem = (itemId: string) => {
 
             {receiptPreviewUrl ? (
               <img
+                className="responsive-receipt-image"
                 src={receiptPreviewUrl}
                 alt="Receipt preview"
                 style={{
@@ -589,6 +596,7 @@ const removeItem = (itemId: string) => {
             </div>
             
             <form
+              className="responsive-form-grid"
               onSubmit={(e) => {
                 e.preventDefault();
                 addManualItem();
@@ -600,6 +608,7 @@ const removeItem = (itemId: string) => {
               }}
             >
               <input
+                aria-label="Manual item name"
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
                 placeholder="Item name"
@@ -611,6 +620,7 @@ const removeItem = (itemId: string) => {
               />
 
               <input
+                aria-label="Manual item price"
                 value={itemPrice}
                 onChange={(e) => setItemPrice(e.target.value)}
                 placeholder="Price"
@@ -645,6 +655,7 @@ const removeItem = (itemId: string) => {
 
         {/* ================= RIGHT ================= */}
         <section
+          className="responsive-summary-column"
           style={{
             flex: 1,
             display: 'flex',
@@ -653,6 +664,7 @@ const removeItem = (itemId: string) => {
           }}
         >
           <div
+            className="responsive-card"
             style={{
               width: 420,
               borderRadius: 14,
@@ -703,7 +715,7 @@ const removeItem = (itemId: string) => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="responsive-header-row" style={{ display: 'flex', justifyContent: 'space-between' }}>
               <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>
                 Items ({visibleItemCount})
               </h2>
@@ -723,6 +735,7 @@ const removeItem = (itemId: string) => {
             <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
               {completedReceiptGroups.map((group) => (
                 <div
+                  className="responsive-item-row"
                   key={`completed-${group.receiptId}`}
                   style={{
                     display: 'flex',
@@ -735,12 +748,31 @@ const removeItem = (itemId: string) => {
                   }}
                 >
                   <div style={{ fontWeight: 900 }}>{group.name}</div>
-                  <div style={{ fontWeight: 900 }}>${group.total.toFixed(2)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ fontWeight: 900 }}>${group.total.toFixed(2)}</div>
+                    <button
+                      type="button"
+                      aria-label={`Remove receipt ${group.name}`}
+                      onClick={() => removeReceiptGroup(group.receiptId)}
+                      style={{
+                        minHeight: 0,
+                        padding: 0,
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ff4d4d',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      remove
+                    </button>
+                  </div>
                 </div>
               ))}
 
               {reviewItems.map((it: Item) => (
                 <div
+                  className="responsive-item-row"
                   key={it.id}
                   style={{
                     display: 'flex',
@@ -751,12 +783,21 @@ const removeItem = (itemId: string) => {
                     color: '#000',
                   }}
                 >
-                  <div>
+                  <div className="responsive-item-main">
                     <b>[{it.source}{it.receiptId ? `:${it.receiptId}` : ''}]</b>{' '}
                     {/* name (click-to-edit) */}
 {editingId !== it.id ? (
   <span
+    className="keyboard-editable"
+    role="button"
+    tabIndex={0}
     onClick={() => beginInlineEdit(it)}
+    onKeyDown={(event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        beginInlineEdit(it);
+      }
+    }}
     title="Click to rename"
     style={{
       fontWeight: 800,
@@ -796,7 +837,16 @@ const removeItem = (itemId: string) => {
 {' '}
 {editingPriceId !== it.id ? (
   <span
+    className="keyboard-editable"
+    role="button"
+    tabIndex={0}
     onClick={() => beginPriceEdit(it)}
+    onKeyDown={(event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        beginPriceEdit(it);
+      }
+    }}
     title="Click to edit price"
     style={{
       opacity: 0.75,
@@ -839,6 +889,7 @@ const removeItem = (itemId: string) => {
                   <button
                     onClick={() => removeItem(it.id)}
                     style={{
+                      minHeight: 0,
                       background: 'transparent',
                       border: 'none',
                       color: '#ff4d4d',
@@ -873,6 +924,8 @@ const removeItem = (itemId: string) => {
       {/* 다음 페이지 화살표  */}
       <Link href="/split" aria-label="Next page">
         <button
+          className="fixed-next-control"
+          aria-label="Continue to split assignment"
           style={{
             position: 'fixed',
             right: 24,

@@ -172,7 +172,7 @@ export default function DutchiePage() {
   }, [people, stats.transfers]);
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
+    <main className="app-page" style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', color: '#fff' }}>
       <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>DUTCHIE!</h1>
       <p style={{ marginTop: 8, opacity: 0.85 }}>
         Optimized settlement — who sends money to whom.
@@ -218,9 +218,9 @@ export default function DutchiePage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14, flexWrap: 'wrap' }}>
+      <div className="responsive-columns" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14, flexWrap: 'wrap' }}>
         {/* Transfers list */}
-        <section style={{ flex: 1, minWidth: 360, maxWidth: 720 }}>
+        <section className="responsive-panel" style={{ flex: 1, minWidth: 360, maxWidth: 720 }}>
           <div
             style={{
               borderRadius: 14,
@@ -245,6 +245,7 @@ export default function DutchiePage() {
                       color: '#000',
                       border: '1px solid rgba(0,0,0,0.12)',
                       display: 'flex',
+                      flexWrap: 'wrap',
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       gap: 10,
@@ -262,8 +263,9 @@ export default function DutchiePage() {
         </section>
 
         {/* Matrix table */}
-        <section style={{ flex: 1, minWidth: 360, maxWidth: 980 }}>
+        <section className="responsive-panel" style={{ flex: 1, minWidth: 360, maxWidth: 980 }}>
           <div
+            className="responsive-scroll"
             style={{
               borderRadius: 14,
               border: '1px solid rgba(255,255,255,0.25)',
@@ -309,7 +311,7 @@ export default function DutchiePage() {
       </div>
 
       {/* Nav */}
-      <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="responsive-nav-row" style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <Link href="/">
           <button
             style={{

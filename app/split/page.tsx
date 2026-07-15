@@ -65,7 +65,7 @@ const clearAllForItem = (itemId: string) => {
   }, [receiptItems]);
 
   return (
-    <main style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', position: 'relative' }}>
+    <main className="app-page" style={{ minHeight: '100vh', padding: 24, fontFamily: 'system-ui', position: 'relative' }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10 }}>
         who&apos;s paying for...
       </h1>
@@ -85,7 +85,7 @@ const clearAllForItem = (itemId: string) => {
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14 }}>
+      <div className="responsive-columns" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginTop: 14 }}>
         {/* ================= LEFT: receipt items ================= */}
         <section style={{ flex: 1, maxWidth: 760 }}>
           <div
@@ -123,7 +123,7 @@ const clearAllForItem = (itemId: string) => {
                     }}
                   >
                     {/* item row */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <div className="responsive-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <div style={{ fontWeight: 800 }}>
                         {it.name}{' '}
                         <span style={{ opacity: 0.75, fontWeight: 700 }}>
@@ -210,7 +210,7 @@ const clearAllForItem = (itemId: string) => {
         </section>
 
         {/* ================= RIGHT: manual summary ================= */}
-        <section style={{ width: 360 }}>
+        <section className="responsive-fixed-panel" style={{ width: 360 }}>
           <div
             style={{
               borderRadius: 14,
@@ -278,6 +278,8 @@ const clearAllForItem = (itemId: string) => {
       {/* 다음 페이지 화살표 (일단 /result로) */}
       <Link href="/payment" aria-label="Next page">
         <button
+          className="fixed-next-control"
+          aria-label="Continue to payment selection"
           style={{
             position: 'fixed',
             right: 24,

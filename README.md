@@ -1,6 +1,6 @@
 # DUTCHIE
 
-DUTCHIE is an AI-assisted group-expense settlement web application. It turns receipt images and manually entered expenses into editable items, lets a group decide who shared each cost and who paid, then produces a simplified set of repayment transfers.
+DUTCHIE is an AI-assisted group-expense settlement assisting web application. It turns receipt images and manually entered expenses into editable items, lets a group decide who shared each cost and who paid, then produces a simplified set of repayment transfers.
 
 The product is designed around a practical constraint: receipt OCR is never perfect. DUTCHIE combines multi-provider OCR with human review instead of treating extracted values as unquestionable. Every receipt-derived item name and price can be corrected before it enters the settlement flow.
 
@@ -84,11 +84,11 @@ Missing or invalid `OCR_PROVIDER` values safely default to `auto`.
 
 ### What OCR does and does not do
 
-The provider layer recognizes document text and word geometry. Its output still enters DUTCHIE's existing client-side price parser. The application does not currently perform semantic item-description extraction, merchant-specific parsing, or guaranteed subtotal reconciliation.
+The provider layer recognizes document text and word geometry. Its output still enters DUTCHIE's existing client-side price parser. The application does not currently perform semantic item-description extraction or guaranteed subtotal reconciliation.
 
 Extracted prices initially receive generated names such as `r1-1` and `r1-2`. Users can rename items, correct prices, name the receipt, and remove incorrect items before continuing.
 
-Receipt images are processed only for the current request. DUTCHIE does not intentionally persist receipt images, log image bytes, or expose raw provider errors to the client.
+Receipt images are processed only for the current request. DUTCHIE does not intentionally persist receipt images or log image bytes.
 
 ## Settlement and Explainability
 

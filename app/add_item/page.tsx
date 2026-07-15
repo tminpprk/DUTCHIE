@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useStore } from '../store';
+import { useStore, type Item } from '../store';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -155,10 +155,17 @@ function parsePricesOnly(text: string) {
   return { prices, subtotal, tax, total };
 }
 
-
 type WordOut = { text: string; x: number; y: number };
 
-async function scanWithVision(file: File): Promise<{ text: string; words: WordOut[] }> {
+type OcrScanResult = {
+  text: string;
+  words: WordOut[];
+  provider?: 'nvidia' | 'google';
+  fallbackUsed?: boolean;
+  warning?: string;
+};
+
+async function scanWithVision(file: File): Promise<OcrScanResult> {
   const fd = new FormData();
   fd.append('file', file);
 
@@ -166,11 +173,17 @@ async function scanWithVision(file: File): Promise<{ text: string; words: WordOu
   const data = await res.json();
 
   if (!res.ok) throw new Error(data?.error || 'Scan failed');
-  return { text: data.text as string, words: (data.words ?? []) as WordOut[] };
+  return {
+    text: data.text as string,
+    words: (data.words ?? []) as WordOut[],
+    provider: data.provider,
+    fallbackUsed: data.fallbackUsed,
+    warning: data.warning,
+  };
 }
 
 
-function getNextReceiptId(items: any[]) {
+function getNextReceiptId(items: Item[]) {
   let maxNum = 0;
   for (const it of items) {
     const rid = it?.receiptId;
@@ -188,6 +201,9 @@ export default function AddItemPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 const [draftName, setDraftName] = useState('');
 const [originalName, setOriginalName] = useState('');
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [draftPrice, setDraftPrice] = useState('');
+  const [originalPrice, setOriginalPrice] = useState('');
 
 
   const [itemName, setItemName] = useState('');
@@ -195,10 +211,16 @@ const [originalName, setOriginalName] = useState('');
   
   const [ocrText, setOcrText] = useState('');
   const [isScanning, setIsScanning] = useState(false);
-  const [ocrWords, setOcrWords] = useState<WordOut[]>([]);
+  const [ocrStatus, setOcrStatus] = useState<{ provider?: 'nvidia' | 'google'; fallbackUsed?: boolean; warning?: string }>({});
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState('');
+  const [activeReceiptId, setActiveReceiptId] = useState('');
+  const [activeReceiptName, setActiveReceiptName] = useState<string | null>(null);
+  const [activeReceiptItemIds, setActiveReceiptItemIds] = useState<string[]>([]);
+
+  const receiptDraftId = activeReceiptId || getNextReceiptId(items);
+  const receiptDraftName = activeReceiptName ?? receiptDraftId;
 
 
   const manualTotal = useMemo(
@@ -212,6 +234,33 @@ const [originalName, setOriginalName] = useState('');
   );
 
   const total = manualTotal + receiptTotal;
+
+  const reviewItems = useMemo(
+    () => items.filter((item) => item.source === 'manual' || activeReceiptItemIds.includes(item.id)),
+    [items, activeReceiptItemIds]
+  );
+
+  const completedReceiptGroups = useMemo(() => {
+    const groups = new Map<string, { name: string; total: number }>();
+    for (const item of items) {
+      if (item.source !== 'receipt' || activeReceiptItemIds.includes(item.id)) continue;
+      const receiptId = item.receiptId || 'r1';
+      const current = groups.get(receiptId);
+      groups.set(receiptId, {
+        name: item.receiptName?.trim() || current?.name || receiptId,
+        total: (current?.total ?? 0) + item.price,
+      });
+    }
+    return Array.from(groups.entries())
+      .map(([receiptId, group]) => ({
+        receiptId,
+        name: group.name,
+        total: Math.round(group.total * 100) / 100,
+      }))
+      .sort((a, b) => a.receiptId.localeCompare(b.receiptId, undefined, { numeric: true }));
+  }, [items, activeReceiptItemIds]);
+
+  const visibleItemCount = reviewItems.length + completedReceiptGroups.length;
 
 
   const addManualItem = () => {
@@ -230,6 +279,11 @@ const [originalName, setOriginalName] = useState('');
   if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
 
   if (file) {
+    if (!activeReceiptId) {
+      const nextReceiptId = getNextReceiptId(items);
+      setActiveReceiptId(nextReceiptId);
+      setActiveReceiptName(nextReceiptId);
+    }
     const url = URL.createObjectURL(file);
     
     setReceiptPreviewUrl(url);
@@ -237,18 +291,20 @@ const [originalName, setOriginalName] = useState('');
     setIsScanning(true);
     setOcrText('');
     try {
-      const { text, words } = await scanWithVision(file);
+      const { text, provider, fallbackUsed, warning } = await scanWithVision(file);
       setOcrText(text || '(no text)');
-      setOcrWords(words || []);
+      setOcrStatus({ provider, fallbackUsed, warning });
 
-    } catch (e: any) {
-      setOcrText(`ERROR: ${e?.message ?? 'scan failed'}`);
+    } catch (error: unknown) {
+      setOcrText(`ERROR: ${error instanceof Error ? error.message : 'scan failed'}`);
+      setOcrStatus({});
     } finally {
       setIsScanning(false);
     }
   } else {
     setReceiptPreviewUrl('');
     setOcrText('');
+    setOcrStatus({});
   }
   
 };
@@ -266,20 +322,37 @@ const extractFromOcrText = () => {
     return;
   }
 
-  setItems((prev: any[]) => {
-    const receiptId = getNextReceiptId(prev);
-
-    const newItems = parsed.prices.map((price, idx) => ({
+  const receiptId = receiptDraftId;
+  const receiptName = receiptDraftName.trim() || receiptId;
+  const newItems: Item[] = parsed.prices.map((price, idx) => ({
       id: uid(),
       name: `${receiptId}-${idx + 1}`,   // ✅ r1-1, r1-2 ...
       price,
+      source: 'receipt' as const,
+      receiptId,
+      receiptName,
+      assignedIds: [],
+  }));
+
+  if (parsed.tax !== null && Math.abs(parsed.tax) >= 0.0001) {
+    newItems.push({
+      id: uid(),
+      name: `${receiptId}-tax`,
+      price: parsed.tax,
       source: 'receipt',
       receiptId,
+      receiptName,
       assignedIds: [],
-    }));
+    });
+  }
 
-    return [...prev, ...newItems];
-  });
+  setItems((prev) => [
+    ...prev.filter((item) => !activeReceiptItemIds.includes(item.id)),
+    ...newItems,
+  ]);
+  setActiveReceiptId(receiptId);
+  setActiveReceiptName(receiptName);
+  setActiveReceiptItemIds(newItems.map((item) => item.id));
 };
 
 const beginInlineEdit = (it: any) => {
@@ -308,9 +381,84 @@ const cancelInlineEdit = () => {
   setOriginalName('');
 };
 
+const beginPriceEdit = (item: Item) => {
+  setEditingPriceId(item.id);
+  setDraftPrice(item.price.toFixed(2));
+  setOriginalPrice(item.price.toFixed(2));
+};
+
+const commitPriceEdit = () => {
+  if (!editingPriceId) return;
+  const nextPrice = Number(draftPrice.trim());
+  if (!Number.isFinite(nextPrice)) {
+    setDraftPrice(originalPrice);
+    setEditingPriceId(null);
+    return;
+  }
+
+  setItems((prev) => prev.map((item) => (
+    item.id === editingPriceId ? { ...item, price: Math.round(nextPrice * 100) / 100 } : item
+  )));
+  setEditingPriceId(null);
+  setDraftPrice('');
+  setOriginalPrice('');
+};
+
+const cancelPriceEdit = () => {
+  setEditingPriceId(null);
+  setDraftPrice('');
+  setOriginalPrice('');
+};
+
+const updateReceiptDraftName = (nextValue: string) => {
+  setActiveReceiptName(nextValue);
+  if (activeReceiptItemIds.length === 0) return;
+  setItems((prev) => prev.map((item) => (
+    activeReceiptItemIds.includes(item.id) ? { ...item, receiptName: nextValue } : item
+  )));
+};
+
+const finishReceipt = () => {
+  const receiptId = receiptDraftId;
+  const receiptName = receiptDraftName.trim();
+  if (!receiptName || activeReceiptItemIds.length === 0) return;
+
+  const duplicateExists = items.some((item) =>
+    item.source === 'receipt' &&
+    (item.receiptName || item.receiptId) === receiptName &&
+    !activeReceiptItemIds.includes(item.id)
+  );
+  if (duplicateExists) {
+    alert(`A receipt named "${receiptName}" already exists.`);
+    return;
+  }
+
+  setItems((prev) => prev.map((item) => (
+    activeReceiptItemIds.includes(item.id) ? { ...item, receiptId, receiptName } : item
+  )));
+  if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+  if (fileInputRef.current) fileInputRef.current.value = '';
+  setReceiptPreviewUrl('');
+  setOcrText('');
+  setOcrStatus({});
+  setActiveReceiptId('');
+  setActiveReceiptName(null);
+  setActiveReceiptItemIds([]);
+  cancelInlineEdit();
+  cancelPriceEdit();
+};
+
+const removeItem = (itemId: string) => {
+  setItems((prev) => prev.filter((item) => item.id !== itemId));
+  setActiveReceiptItemIds((prev) => prev.filter((id) => id !== itemId));
+  if (editingId === itemId) cancelInlineEdit();
+  if (editingPriceId === itemId) cancelPriceEdit();
+};
+
 
   const clearReceiptItems = () => {
     setItems((prev: any[]) => prev.filter((x) => x.source !== 'receipt'));
+    setActiveReceiptItemIds([]);
   };
 
   return (
@@ -357,9 +505,18 @@ const cancelInlineEdit = () => {
               background: 'rgba(255,255,255,0.08)',
             }}
           >
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>
-              Receipt
-            </div>
+
+            {isScanning && <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}>Preparing AI...</div>}
+            {!isScanning && ocrStatus.provider && (
+              <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}>
+                Analyzing with {ocrStatus.provider === 'nvidia' ? 'NVIDIA' : ocrStatus.fallbackUsed ? 'Google fallback' : 'Google'}
+              </div>
+            )}
+            {!isScanning && ocrStatus.warning && (
+              <div role="status" style={{ fontSize: 13, color: '#ffd27a', marginBottom: 8 }}>
+                {ocrStatus.warning}
+              </div>
+            )}
 
             {receiptPreviewUrl ? (
               <img
@@ -484,9 +641,6 @@ const cancelInlineEdit = () => {
               </button>
             </form>
           </div>
-          <div style={{ fontSize: 13, opacity: 0.75, marginTop: 20 , marginBottom: 20}}>
-              Tip: Upload your receipt if items payment varys individually
-            </div>
         </section>
 
         {/* ================= RIGHT ================= */}
@@ -507,9 +661,51 @@ const cancelInlineEdit = () => {
               padding: 16,
             }}
           >
+            <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+              <label htmlFor="receipt-name" style={{ fontSize: 13, fontWeight: 800, opacity: 0.85 }}>
+                Current receipt
+              </label>
+              <input
+                id="receipt-name"
+                value={receiptDraftName}
+                onChange={(event) => updateReceiptDraftName(event.target.value)}
+                aria-label="Receipt name"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '9px 10px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.35)',
+                  background: '#fff',
+                  color: '#000',
+                  fontWeight: 800,
+                }}
+              />
+              <button
+                type="button"
+                onClick={finishReceipt}
+                disabled={activeReceiptItemIds.length === 0}
+                style={{
+                  justifySelf: 'start',
+                  padding: '9px 12px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.35)',
+                  background: activeReceiptItemIds.length > 0 ? '#fff' : 'rgba(255,255,255,0.18)',
+                  color: activeReceiptItemIds.length > 0 ? '#000' : 'rgba(255,255,255,0.55)',
+                  cursor: activeReceiptItemIds.length > 0 ? 'pointer' : 'not-allowed',
+                  fontWeight: 800,
+                }}
+              >
+                Done with this receipt
+              </button>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>
+                Review prices before pressing "Done with this receipt"
+              </div>
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>
-                Items ({items.length})
+                Items ({visibleItemCount})
               </h2>
               <div style={{ fontWeight: 800 }}>
                 ${total.toFixed(2)}
@@ -521,11 +717,29 @@ const cancelInlineEdit = () => {
             </div>
 
             <div style={{ fontSize: 13, opacity: 0.75, marginTop: 6 }}>
-              Tip: You can click item to change its name
+              Tip: Change a item name for items you have to pay it separately. (e.g., "mj's drink" or "andrew's dessert")
             </div>
 
             <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
-              {items.map((it: any) => (
+              {completedReceiptGroups.map((group) => (
+                <div
+                  key={`completed-${group.receiptId}`}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: 12,
+                    borderRadius: 12,
+                    background: '#ffffffbe',
+                    color: '#000',
+                  }}
+                >
+                  <div style={{ fontWeight: 900 }}>{group.name}</div>
+                  <div style={{ fontWeight: 900 }}>${group.total.toFixed(2)}</div>
+                </div>
+              ))}
+
+              {reviewItems.map((it: Item) => (
                 <div
                   key={it.id}
                   style={{
@@ -579,14 +793,51 @@ const cancelInlineEdit = () => {
   />
 )}
 
-<span style={{ opacity: 0.75, fontWeight: 700 }}>
-  {' '}(${it.price.toFixed(2)})
-</span>
+{' '}
+{editingPriceId !== it.id ? (
+  <span
+    onClick={() => beginPriceEdit(it)}
+    title="Click to edit price"
+    style={{
+      opacity: 0.75,
+      fontWeight: 700,
+      cursor: 'text',
+      borderBottom: '1px dashed rgba(0,0,0,0.35)',
+    }}
+  >
+    (${it.price.toFixed(2)})
+  </span>
+) : (
+  <input
+    autoFocus
+    value={draftPrice}
+    inputMode="decimal"
+    aria-label={`Price for ${it.name}`}
+    onChange={(event) => setDraftPrice(event.target.value)}
+    onFocus={(event) => event.currentTarget.select()}
+    onKeyDown={(event) => {
+      if (event.key === 'Enter') commitPriceEdit();
+      if (event.key === 'Escape') cancelPriceEdit();
+    }}
+    onBlur={() => {
+      if (draftPrice.trim() && draftPrice.trim() !== originalPrice) commitPriceEdit();
+      else cancelPriceEdit();
+    }}
+    style={{
+      width: 86,
+      padding: '6px 8px',
+      borderRadius: 10,
+      border: '1px solid rgba(0,0,0,0.18)',
+      fontWeight: 800,
+      background: '#fff',
+    }}
+  />
+)}
 
                   </div>
 
                   <button
-                    onClick={() => setItems((prev: any[]) => prev.filter((x) => x.id !== it.id))}
+                    onClick={() => removeItem(it.id)}
                     style={{
                       background: 'transparent',
                       border: 'none',

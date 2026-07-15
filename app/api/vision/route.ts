@@ -1,60 +1,36 @@
 import { NextResponse } from 'next/server';
-import vision from '@google-cloud/vision';
+import { selectOcrProvider } from '../../../lib/ocr/select-provider';
+import { OcrProviderError } from '../../../lib/ocr/types';
 
 export const runtime = 'nodejs';
 
-type WordOut = {
-  text: string;
-  x: number; // center x
-  y: number; // center y
-};
+const supportedMimeTypes = new Set(['image/jpeg', 'image/png']);
 
 export async function POST(req: Request) {
+  let form: FormData;
   try {
-    const form = await req.formData();
-    const file = form.get('file');
+    form = await req.formData();
+  } catch {
+    return NextResponse.json({ error: 'Could not read uploaded form data.' }, { status: 400 });
+  }
 
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
-    }
+  const file = form.get('file');
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+  }
+  if (!supportedMimeTypes.has(file.type)) {
+    return NextResponse.json({ error: 'Only JPEG and PNG receipt images are supported.' }, { status: 415 });
+  }
 
+  try {
     const bytes = Buffer.from(await file.arrayBuffer());
-    const client = new vision.ImageAnnotatorClient();
-
-    const [result] = await client.documentTextDetection({
-      image: { content: bytes },
-    });
-
-    const text = result.fullTextAnnotation?.text ?? '';
-
-    // ✅ word + 좌표 추출
-    const words: WordOut[] = [];
-    const pages = result.fullTextAnnotation?.pages ?? [];
-
-    for (const page of pages) {
-      for (const block of page.blocks ?? []) {
-        for (const para of block.paragraphs ?? []) {
-          for (const w of para.words ?? []) {
-            const wordText = (w.symbols ?? []).map((s) => s.text ?? '').join('');
-            const vs = w.boundingBox?.vertices ?? [];
-            if (!wordText || vs.length < 2) continue;
-
-            const xs = vs.map((v) => v.x ?? 0);
-            const ys = vs.map((v) => v.y ?? 0);
-            const x = (Math.min(...xs) + Math.max(...xs)) / 2;
-            const y = (Math.min(...ys) + Math.max(...ys)) / 2;
-
-            words.push({ text: wordText, x, y });
-          }
-        }
-      }
-    }
-
-    return NextResponse.json({ text, words });
-  } catch (err: any) {
+    const result = await selectOcrProvider(bytes, file.type as 'image/jpeg' | 'image/png');
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    const known = error instanceof OcrProviderError ? error : null;
     return NextResponse.json(
-      { error: err?.message ?? 'Vision request failed' },
-      { status: 500 }
+      { error: known?.publicMessage ?? 'OCR request failed.' },
+      { status: known?.status ?? 500 },
     );
   }
 }

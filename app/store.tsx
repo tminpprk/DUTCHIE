@@ -18,6 +18,7 @@ export type Item = {
 
   // ✅ receipt 묶음 구분용 (receipt 1, receipt 2…)
   receiptId?: string; // 예: 'r1', 'r2'
+  receiptName?: string; // user-facing label; receiptId remains the stable grouping key
 };
 
 type Store = {

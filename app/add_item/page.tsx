@@ -208,6 +208,7 @@ const [originalName, setOriginalName] = useState('');
 
   const [itemName, setItemName] = useState('');
   const [itemPrice, setItemPrice] = useState('');
+  const [isManualInputOpen, setIsManualInputOpen] = useState(false);
   
   const [ocrText, setOcrText] = useState('');
   const [isScanning, setIsScanning] = useState(false);
@@ -561,7 +562,10 @@ const removeReceiptGroup = (receiptId: string) => {
         
 
               <button
-                onClick={clearReceiptItems}
+                type="button"
+                onClick={() => setIsManualInputOpen((isOpen) => !isOpen)}
+                aria-expanded={isManualInputOpen}
+                aria-controls="manual-item-input"
                 style={{
                   padding: '10px 14px',
                   borderRadius: 10,
@@ -572,13 +576,14 @@ const removeReceiptGroup = (receiptId: string) => {
                   cursor: 'pointer',
                 }}
               >
-                Clear receipt items
+                {isManualInputOpen ? 'Hide manual input' : 'Add item manually'}
               </button>
             </div>
           </div>
 
           {/* Manual input */}
-          <div
+          {isManualInputOpen && <div
+            id="manual-item-input"
             style={{
               marginTop: 16,
               padding: 14,
@@ -650,7 +655,7 @@ const removeReceiptGroup = (receiptId: string) => {
                 Add
               </button>
             </form>
-          </div>
+          </div>}
         </section>
 
         {/* ================= RIGHT ================= */}
@@ -709,6 +714,22 @@ const removeReceiptGroup = (receiptId: string) => {
                 }}
               >
                 Done with this receipt
+              </button>
+              <button
+                type="button"
+                onClick={clearReceiptItems}
+                style={{
+                  justifySelf: 'start',
+                  padding: '9px 12px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.35)',
+                  background: 'transparent',
+                  color: '#fff',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Clear receipt items
               </button>
               <div style={{ fontSize: 12, opacity: 0.7 }}>
                 Review prices before pressing "Done with this receipt"

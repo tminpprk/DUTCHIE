@@ -241,9 +241,3 @@ Major sections stack on narrow screens, fixed navigation controls reserve safe s
 - State is intentionally in-memory and is lost when the application is refreshed.
 - The settlement routine simplifies repayment relationships but is not presented as a proof of global minimum transfer count.
 
-## Documentation
-
-- [OCR provider architecture](docs/OCR_PROVIDER_ARCHITECTURE.md)
-- [Settlement explainability](docs/SETTLEMENT_EXPLAINABILITY.md)
-- [Responsive UI audit](docs/RESPONSIVE_UI_AUDIT.md)
-- 
